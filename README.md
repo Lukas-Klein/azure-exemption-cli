@@ -37,5 +37,5 @@ Follow the on-screen instructions. Use `↑/↓` to navigate lists, `Space` to t
 The project follows a standard Go project layout:
 
 - `main.go`: Application entry point.
-- `internal/azure`: Azure CLI interaction logic and types.
-- `internal/tui`: Bubble Tea UI model, views, and update logic.
+- `/azure`: Azure CLI interaction logic and types.
+- `/tui`: Bubble Tea UI model, views, and update logic.

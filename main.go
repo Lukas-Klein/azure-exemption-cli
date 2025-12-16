@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Lukas-Klein/azure-exemption-cli/internal/azure"
-	"github.com/Lukas-Klein/azure-exemption-cli/internal/tui"
+	"github.com/Lukas-Klein/azure-exemption-cli/azure"
+	"github.com/Lukas-Klein/azure-exemption-cli/tui"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

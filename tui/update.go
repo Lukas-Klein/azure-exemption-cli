@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Lukas-Klein/azure-exemption-cli/internal/azure"
+	"github.com/Lukas-Klein/azure-exemption-cli/azure"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
