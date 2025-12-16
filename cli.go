@@ -14,6 +14,11 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+var (
+	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 )
 
 type step int
@@ -26,6 +31,8 @@ const (
 	stepLoadingAssignmentDefinitions
 	stepAssignmentScope
 	stepSelectDefinitions
+	stepLoadingResourceGroups
+	stepSelectResourceGroup
 	stepTicket
 	stepUsers
 	stepConfirm
@@ -35,6 +42,11 @@ const (
 )
 
 type subscription struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type resourceGroup struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
@@ -100,6 +112,11 @@ type assignmentDefinitionsLoadedMsg struct {
 	err         error
 }
 
+type resourceGroupsLoadedMsg struct {
+	resourceGroups []resourceGroup
+	err            error
+}
+
 type exemptionCreatedMsg struct {
 	output string
 	err    error
@@ -115,10 +132,12 @@ type model struct {
 	subscriptions         []subscription
 	assignments           []policyAssignment
 	assignmentDefinitions []policyDefinitionRef
+	resourceGroups        []resourceGroup
 	selectedDefinitionIDs map[string]bool
 	cursor                int
 	selectedSubscription  int
 	selectedAssignment    int
+	selectedResourceGroup int
 	partialExemption      bool
 
 	ticketInput textinput.Model
@@ -148,6 +167,7 @@ func newModel(ctx context.Context) *model {
 		step:                  stepLoadingSubscriptions,
 		selectedSubscription:  -1,
 		selectedAssignment:    -1,
+		selectedResourceGroup: -1,
 		selectedDefinitionIDs: make(map[string]bool),
 		ticketInput:           ticketInput,
 		userInput:             userInput,
@@ -212,11 +232,27 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Exempt entire assignment or select specific definitions?"
 		} else {
 			m.partialExemption = false
-			m.step = stepTicket
-			m.ticketInput.SetValue("")
-			m.ticketInput.Focus()
-			m.status = "Provide the tracking ticket number linked to this exemption:"
+			m.step = stepLoadingResourceGroups
+			m.status = "Loading resource groups..."
+			return m, fetchResourceGroupsCmd(m.ctx, m.currentSubscription())
 		}
+		return m, nil
+
+	case resourceGroupsLoadedMsg:
+		if msg.err != nil {
+			return m.fail(msg.err)
+		}
+		// Prepend "Entire Subscription" option
+		sub := m.currentSubscription()
+		entireSub := resourceGroup{
+			Name: "Entire Subscription",
+			ID:   sub.scope(),
+		}
+		m.resourceGroups = append([]resourceGroup{entireSub}, msg.resourceGroups...)
+		m.selectedResourceGroup = -1
+		m.cursor = 0
+		m.step = stepSelectResourceGroup
+		m.status = "Select the scope for the exemption (Subscription or Resource Group)."
 		return m, nil
 
 	case exemptionCreatedMsg:
@@ -289,11 +325,9 @@ func (m *model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		case "enter":
 			if m.cursor == 0 {
 				m.partialExemption = false
-				m.step = stepTicket
-				m.ticketInput.SetValue("")
-				m.ticketInput.Focus()
-				m.status = "Provide the tracking ticket number linked to this exemption:"
-				return nil
+				m.step = stepLoadingResourceGroups
+				m.status = "Loading resource groups..."
+				return fetchResourceGroupsCmd(m.ctx, m.currentSubscription())
 			}
 			m.partialExemption = true
 			m.step = stepSelectDefinitions
@@ -330,6 +364,26 @@ func (m *model) handleKey(msg tea.KeyMsg) tea.Cmd {
 				m.status = "Select at least one definition or choose full assignment."
 				return nil
 			}
+			m.step = stepLoadingResourceGroups
+			m.status = "Loading resource groups..."
+			return fetchResourceGroupsCmd(m.ctx, m.currentSubscription())
+		}
+
+	case stepSelectResourceGroup:
+		switch msg.String() {
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.resourceGroups)-1 {
+				m.cursor++
+			}
+		case "enter":
+			if len(m.resourceGroups) == 0 {
+				return nil
+			}
+			m.selectedResourceGroup = m.cursor
 			m.step = stepTicket
 			m.ticketInput.SetValue("")
 			m.ticketInput.Focus()
@@ -375,18 +429,18 @@ func (m *model) handleKey(msg tea.KeyMsg) tea.Cmd {
 
 	case stepConfirm:
 		if msg.Type == tea.KeyEnter {
-			if m.selectedAssignment < 0 || m.ticket == "" || m.requestUser == "" || m.selectedSubscription < 0 {
+			if m.selectedAssignment < 0 || m.ticket == "" || m.requestUser == "" || m.selectedSubscription < 0 || m.selectedResourceGroup < 0 {
 				m.status = "Missing information. Use q to abort."
 				return nil
 			}
 			m.step = stepCreating
-			sub := m.currentSubscription()
 			assign := m.currentAssignment()
+			rg := m.resourceGroups[m.selectedResourceGroup]
 			m.status = "Creating Azure Policy exemption..."
-			return createExemptionCmd(m.ctx, sub, assign, m.selectedDefinitionIDs, m.ticket, m.requestUser)
+			return createExemptionCmd(m.ctx, rg.ID, assign, m.selectedDefinitionIDs, m.ticket, m.requestUser)
 		}
 
-	case stepError, stepDone, stepLoadingAssignmentDefinitions, stepLoadingAssignments, stepLoadingSubscriptions, stepCreating:
+	case stepError, stepDone, stepLoadingAssignmentDefinitions, stepLoadingAssignments, stepLoadingSubscriptions, stepLoadingResourceGroups, stepCreating:
 		// No interactive keys beyond quit for these states.
 	}
 
@@ -414,7 +468,11 @@ func (m *model) View() string {
 			if i == m.selectedSubscription {
 				marker = "x"
 			}
-			fmt.Fprintf(&b, "%s [%s] %s (%s)\n", cursor, marker, sub.Name, sub.shortID())
+			line := fmt.Sprintf("%s [%s] %s (%s)", cursor, marker, sub.Name, sub.shortID())
+			if i == m.cursor {
+				line = selectedStyle.Render(line)
+			}
+			fmt.Fprintf(&b, "%s\n", line)
 		}
 		fmt.Fprintf(&b, "\nShowing %d-%d of %d\n", start+1, end, len(m.subscriptions))
 		b.WriteString("↑/↓ to move, Enter to select.\n")
@@ -436,7 +494,11 @@ func (m *model) View() string {
 			if i == m.selectedAssignment {
 				marker = "x"
 			}
-			fmt.Fprintf(&b, "%s [%s] %s (%s)\n", cursor, marker, assign.displayLabel(), assign.shortID())
+			line := fmt.Sprintf("%s [%s] %s (%s)", cursor, marker, assign.displayLabel(), assign.shortID())
+			if i == m.cursor {
+				line = selectedStyle.Render(line)
+			}
+			fmt.Fprintf(&b, "%s\n", line)
 		}
 		fmt.Fprintf(&b, "\nShowing %d-%d of %d\n", start+1, end, len(m.assignments))
 		b.WriteString("↑/↓ to move, Enter to select.\n")
@@ -452,7 +514,11 @@ func (m *model) View() string {
 			if i == m.cursor {
 				cursor = ">"
 			}
-			fmt.Fprintf(&b, "%s %s\n", cursor, opt)
+			line := fmt.Sprintf("%s %s", cursor, opt)
+			if i == m.cursor {
+				line = selectedStyle.Render(line)
+			}
+			fmt.Fprintf(&b, "%s\n", line)
 		}
 		b.WriteString("\n↑/↓ to move, Enter to choose.\n")
 
@@ -469,10 +535,39 @@ func (m *model) View() string {
 			if m.selectedDefinitionIDs[ref.ReferenceID] {
 				marker = "x"
 			}
-			fmt.Fprintf(&b, "%s [%s] %s (%s)\n", cursor, marker, ref.DisplayName, ref.ReferenceID)
+			line := fmt.Sprintf("%s [%s] %s (%s)", cursor, marker, ref.DisplayName, ref.ReferenceID)
+			if i == m.cursor {
+				line = selectedStyle.Render(line)
+			}
+			fmt.Fprintf(&b, "%s\n", line)
 		}
 		fmt.Fprintf(&b, "\nShowing %d-%d of %d\n", start+1, end, len(m.assignmentDefinitions))
 		b.WriteString("↑/↓ to move, Space to toggle, Enter to continue.\n")
+
+	case stepLoadingResourceGroups:
+		b.WriteString("Loading resource groups...\n")
+
+	case stepSelectResourceGroup:
+		b.WriteString("Select the scope for the exemption:\n\n")
+		start, end := visibleRange(m.cursor, len(m.resourceGroups), maxVisibleSubscriptions)
+		for i := start; i < end; i++ {
+			rg := m.resourceGroups[i]
+			cursor := " "
+			if i == m.cursor {
+				cursor = ">"
+			}
+			marker := " "
+			if i == m.selectedResourceGroup {
+				marker = "x"
+			}
+			line := fmt.Sprintf("%s [%s] %s", cursor, marker, rg.Name)
+			if i == m.cursor {
+				line = selectedStyle.Render(line)
+			}
+			fmt.Fprintf(&b, "%s\n", line)
+		}
+		fmt.Fprintf(&b, "\nShowing %d-%d of %d\n", start+1, end, len(m.resourceGroups))
+		b.WriteString("↑/↓ to move, Enter to select.\n")
 
 	case stepTicket:
 		assign := m.currentAssignment()
@@ -498,7 +593,9 @@ func (m *model) View() string {
 	case stepConfirm:
 		sub := m.currentSubscription()
 		assign := m.currentAssignment()
+		rg := m.resourceGroups[m.selectedResourceGroup]
 		fmt.Fprintf(&b, "Subscription: %s (%s)\n", sub.Name, sub.shortID())
+		fmt.Fprintf(&b, "Scope: %s\n", rg.Name)
 		fmt.Fprintf(&b, "Assignment: %s\n", assign.displayLabel())
 		if m.partialExemption && len(m.selectedDefinitionIDs) > 0 {
 			b.WriteString("Definitions:\n")
@@ -533,8 +630,6 @@ func (m *model) View() string {
 	if m.status != "" {
 		b.WriteString("\n" + m.status + "\n")
 	}
-
-	b.WriteString("\nPress q to quit")
 
 	return b.String()
 }
@@ -622,13 +717,20 @@ func fetchAssignmentDefinitionsCmd(ctx context.Context, assignment policyAssignm
 	}
 }
 
-func createExemptionCmd(ctx context.Context, sub subscription, assignment policyAssignment, selectedDefinitionIDs map[string]bool, ticket, users string) tea.Cmd {
+func fetchResourceGroupsCmd(ctx context.Context, sub subscription) tea.Cmd {
+	return func() tea.Msg {
+		rgs, err := listResourceGroups(ctx, sub.shortID())
+		return resourceGroupsLoadedMsg{resourceGroups: rgs, err: err}
+	}
+}
+
+func createExemptionCmd(ctx context.Context, scope string, assignment policyAssignment, selectedDefinitionIDs map[string]bool, ticket, users string) tea.Cmd {
 	return func() tea.Msg {
 		var refs []string
 		for ref := range selectedDefinitionIDs {
 			refs = append(refs, ref)
 		}
-		output, err := createExemption(ctx, sub, assignment, refs, ticket, users)
+		output, err := createExemption(ctx, scope, assignment, refs, ticket, users)
 		return exemptionCreatedMsg{output: output, err: err}
 	}
 }
@@ -684,6 +786,21 @@ func listAssignments(ctx context.Context, subscriptionID string) ([]policyAssign
 	return allAssignments, nil
 }
 
+func listResourceGroups(ctx context.Context, subscriptionID string) ([]resourceGroup, error) {
+	data, err := runAzCommand(ctx, "group", "list", "--subscription", subscriptionID, "--query", "[].{name:name,id:id}", "-o", "json")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list resource groups: %w", err)
+	}
+	var rgs []resourceGroup
+	if err := json.Unmarshal(data, &rgs); err != nil {
+		return nil, fmt.Errorf("unable to parse resource group data: %w", err)
+	}
+	sort.Slice(rgs, func(i, j int) bool {
+		return strings.ToLower(rgs[i].Name) < strings.ToLower(rgs[j].Name)
+	})
+	return rgs, nil
+}
+
 func listAssignmentDefinitions(ctx context.Context, assignment policyAssignment) ([]policyDefinitionRef, error) {
 	if assignment.PolicyDefinitionID == "" {
 		return nil, nil
@@ -691,15 +808,26 @@ func listAssignmentDefinitions(ctx context.Context, assignment policyAssignment)
 	if !strings.Contains(strings.ToLower(assignment.PolicyDefinitionID), "policysetdefinitions") {
 		return nil, nil
 	}
+
+	name, sub, mg := parsePolicyID(assignment.PolicyDefinitionID)
+	if name == "" {
+		return nil, fmt.Errorf("could not parse policy set name from ID: %s", assignment.PolicyDefinitionID)
+	}
+
 	args := []string{
 		"policy", "set-definition", "show",
-		"--id", assignment.PolicyDefinitionID,
-		"--query", "{policyDefinitions:policyDefinitions}",
-		"-o", "json",
+		"--name", name,
 	}
+	if mg != "" {
+		args = append(args, "--management-group", mg)
+	} else if sub != "" {
+		args = append(args, "--subscription", sub)
+	}
+	args = append(args, "--query", "{policyDefinitions:policyDefinitions}", "-o", "json")
+
 	data, err := runAzCommand(ctx, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load policy set definition: %w", err)
+		return nil, fmt.Errorf("failed to load policy set definition (ID: '%s'): %w", assignment.PolicyDefinitionID, err)
 	}
 	var set struct {
 		PolicyDefinitions []struct {
@@ -729,7 +857,27 @@ func listAssignmentDefinitions(ctx context.Context, assignment policyAssignment)
 }
 
 func policyDisplayName(ctx context.Context, definitionID string) (string, error) {
-	data, err := runAzCommand(ctx, "policy", "definition", "show", "--id", definitionID, "--query", "{displayName:displayName,name:name}", "-o", "json")
+	if definitionID == "" {
+		return "", nil
+	}
+
+	name, sub, mg := parsePolicyID(definitionID)
+	if name == "" {
+		return "", fmt.Errorf("could not parse policy definition name from ID: %s", definitionID)
+	}
+
+	args := []string{
+		"policy", "definition", "show",
+		"--name", name,
+	}
+	if mg != "" {
+		args = append(args, "--management-group", mg)
+	} else if sub != "" {
+		args = append(args, "--subscription", sub)
+	}
+	args = append(args, "--query", "{displayName:displayName,name:name}", "-o", "json")
+
+	data, err := runAzCommand(ctx, args...)
 	if err != nil {
 		return "", err
 	}
@@ -746,11 +894,7 @@ func policyDisplayName(ctx context.Context, definitionID string) (string, error)
 	return def.Name, nil
 }
 
-func createExemption(ctx context.Context, sub subscription, assignment policyAssignment, referenceIDs []string, ticket, users string) (string, error) {
-	scope := assignment.Scope
-	if scope == "" {
-		scope = sub.scope()
-	}
+func createExemption(ctx context.Context, scope string, assignment policyAssignment, referenceIDs []string, ticket, users string) (string, error) {
 	description := fmt.Sprintf("Ticket %s raised by %s on %s", ticket, users, time.Now().Format(time.RFC3339))
 	args := []string{
 		"policy", "exemption", "create",
@@ -771,6 +915,22 @@ func createExemption(ctx context.Context, sub subscription, assignment policyAss
 		return "", fmt.Errorf("failed to create policy exemption: %w", err)
 	}
 	return string(data), nil
+}
+
+func parsePolicyID(id string) (name, subscription, managementGroup string) {
+	parts := strings.Split(id, "/")
+	for i, part := range parts {
+		if strings.EqualFold(part, "subscriptions") && i+1 < len(parts) {
+			subscription = parts[i+1]
+		}
+		if strings.EqualFold(part, "managementGroups") && i+1 < len(parts) {
+			managementGroup = parts[i+1]
+		}
+		if (strings.EqualFold(part, "policySetDefinitions") || strings.EqualFold(part, "policyDefinitions")) && i+1 < len(parts) {
+			name = parts[i+1]
+		}
+	}
+	return
 }
 
 func runAzCommand(ctx context.Context, args ...string) ([]byte, error) {
