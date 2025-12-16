@@ -2,8 +2,6 @@
 
 A Bubble Tea terminal UI that guides you through creating Azure Policy exemptions with the Azure CLI.
 
-<video src="./example.mp4" height="300" controls></video>
-
 ## Prerequisites
 
 - Go 1.21 or later
