@@ -35,6 +35,8 @@ const (
 	stepSelectResourceGroup
 	stepTicket
 	stepUsers
+	stepExpirationChoice
+	stepExpirationDate
 	stepConfirm
 	stepCreating
 	stepDone
@@ -140,11 +142,13 @@ type model struct {
 	selectedResourceGroup int
 	partialExemption      bool
 
-	ticketInput textinput.Model
-	userInput   textinput.Model
+	ticketInput     textinput.Model
+	userInput       textinput.Model
+	expirationInput textinput.Model
 
-	ticket      string
-	requestUser string
+	ticket         string
+	requestUser    string
+	expirationDate string
 
 	createOutput string
 }
@@ -162,6 +166,12 @@ func newModel(ctx context.Context) *model {
 	userInput.CharLimit = 256
 	userInput.Blur()
 
+	expirationInput := textinput.New()
+	expirationInput.Placeholder = "YYYY-MM-DD"
+	expirationInput.Prompt = "Expires on> "
+	expirationInput.CharLimit = 10
+	expirationInput.Blur()
+
 	return &model{
 		ctx:                   ctx,
 		step:                  stepLoadingSubscriptions,
@@ -171,6 +181,7 @@ func newModel(ctx context.Context) *model {
 		selectedDefinitionIDs: make(map[string]bool),
 		ticketInput:           ticketInput,
 		userInput:             userInput,
+		expirationInput:       expirationInput,
 	}
 }
 
@@ -336,6 +347,32 @@ func (m *model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 
+	case stepExpirationChoice:
+		switch msg.String() {
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < 1 {
+				m.cursor++
+			}
+		case "enter":
+			if m.cursor == 0 {
+				// Unlimited
+				m.expirationDate = ""
+				m.step = stepConfirm
+				m.status = "Review the summary and press Enter to create the exemption."
+			} else {
+				// Set Date
+				m.step = stepExpirationDate
+				m.expirationInput.SetValue(time.Now().AddDate(0, 0, 30).Format("2006-01-02"))
+				m.expirationInput.Focus()
+				m.status = "Enter expiration date (YYYY-MM-DD):"
+			}
+			return nil
+		}
+
 	case stepSelectDefinitions:
 		switch msg.String() {
 		case "up", "k":
@@ -420,8 +457,32 @@ func (m *model) handleKey(msg tea.KeyMsg) tea.Cmd {
 				return textCmd
 			}
 			m.requestUser = value
-			m.step = stepConfirm
+			m.step = stepExpirationChoice
 			m.userInput.Blur()
+			m.cursor = 0
+			m.status = "Set an expiration date for this exemption?"
+			return textCmd
+		}
+		return textCmd
+
+	case stepExpirationDate:
+		var textCmd tea.Cmd
+		m.expirationInput, textCmd = m.expirationInput.Update(msg)
+		if msg.Type == tea.KeyEnter {
+			value := strings.TrimSpace(m.expirationInput.Value())
+			if value == "" {
+				m.status = "Expiration date is required."
+				return textCmd
+			}
+			// Simple validation for YYYY-MM-DD
+			_, err := time.Parse("2006-01-02", value)
+			if err != nil {
+				m.status = "Invalid date format. Please use YYYY-MM-DD."
+				return textCmd
+			}
+			m.expirationDate = value
+			m.step = stepConfirm
+			m.expirationInput.Blur()
 			m.status = "Review the summary and press Enter to create the exemption."
 			return textCmd
 		}
@@ -437,7 +498,7 @@ func (m *model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			assign := m.currentAssignment()
 			rg := m.resourceGroups[m.selectedResourceGroup]
 			m.status = "Creating Azure Policy exemption..."
-			return createExemptionCmd(m.ctx, rg.ID, assign, m.selectedDefinitionIDs, m.ticket, m.requestUser)
+			return createExemptionCmd(m.ctx, rg.ID, assign, m.selectedDefinitionIDs, m.ticket, m.requestUser, m.expirationDate)
 		}
 
 	case stepError, stepDone, stepLoadingAssignmentDefinitions, stepLoadingAssignments, stepLoadingSubscriptions, stepLoadingResourceGroups, stepCreating:
@@ -590,6 +651,26 @@ func (m *model) View() string {
 		b.WriteString("Who is requesting this exemption? (comma separated)\n\n")
 		b.WriteString(m.userInput.View() + "\n")
 
+	case stepExpirationChoice:
+		b.WriteString("Do you want to set an expiration date?\n\n")
+		options := []string{"Unlimited (No expiration)", "Set expiration date"}
+		for i, opt := range options {
+			cursor := " "
+			if i == m.cursor {
+				cursor = ">"
+			}
+			line := fmt.Sprintf("%s %s", cursor, opt)
+			if i == m.cursor {
+				line = selectedStyle.Render(line)
+			}
+			fmt.Fprintf(&b, "%s\n", line)
+		}
+		b.WriteString("\n↑/↓ to move, Enter to choose.\n")
+
+	case stepExpirationDate:
+		b.WriteString("Enter the expiration date (YYYY-MM-DD):\n\n")
+		b.WriteString(m.expirationInput.View() + "\n")
+
 	case stepConfirm:
 		sub := m.currentSubscription()
 		assign := m.currentAssignment()
@@ -608,8 +689,13 @@ func (m *model) View() string {
 			b.WriteString("Definitions: Entire assignment\n")
 		}
 		fmt.Fprintf(&b, "Ticket: %s\n", m.ticket)
-		fmt.Fprintf(&b, "Requesters: %s\n\n", m.requestUser)
-		b.WriteString("Press Enter to create the exemption or q to abort.\n")
+		fmt.Fprintf(&b, "Requesters: %s\n", m.requestUser)
+		if m.expirationDate != "" {
+			fmt.Fprintf(&b, "Expires on: %s\n", m.expirationDate)
+		} else {
+			b.WriteString("Expires on: Unlimited\n")
+		}
+		b.WriteString("\nPress Enter to create the exemption or q to abort.\n")
 
 	case stepCreating:
 		b.WriteString("Creating policy exemption via Azure CLI...\n")
@@ -724,13 +810,13 @@ func fetchResourceGroupsCmd(ctx context.Context, sub subscription) tea.Cmd {
 	}
 }
 
-func createExemptionCmd(ctx context.Context, scope string, assignment policyAssignment, selectedDefinitionIDs map[string]bool, ticket, users string) tea.Cmd {
+func createExemptionCmd(ctx context.Context, scope string, assignment policyAssignment, selectedDefinitionIDs map[string]bool, ticket, users, expirationDate string) tea.Cmd {
 	return func() tea.Msg {
 		var refs []string
 		for ref := range selectedDefinitionIDs {
 			refs = append(refs, ref)
 		}
-		output, err := createExemption(ctx, scope, assignment, refs, ticket, users)
+		output, err := createExemption(ctx, scope, assignment, refs, ticket, users, expirationDate)
 		return exemptionCreatedMsg{output: output, err: err}
 	}
 }
@@ -894,7 +980,7 @@ func policyDisplayName(ctx context.Context, definitionID string) (string, error)
 	return def.Name, nil
 }
 
-func createExemption(ctx context.Context, scope string, assignment policyAssignment, referenceIDs []string, ticket, users string) (string, error) {
+func createExemption(ctx context.Context, scope string, assignment policyAssignment, referenceIDs []string, ticket, users, expirationDate string) (string, error) {
 	description := fmt.Sprintf("Ticket %s raised by %s on %s", ticket, users, time.Now().Format(time.RFC3339))
 	args := []string{
 		"policy", "exemption", "create",
@@ -905,6 +991,18 @@ func createExemption(ctx context.Context, scope string, assignment policyAssignm
 		"--description", description,
 		"--exemption-category", "Waiver",
 		"-o", "json",
+	}
+	if expirationDate != "" {
+		// Append time to make it end of day or specific time if needed, but CLI usually takes date or datetime.
+		// If just date is provided, it might default to 00:00.
+		// Let's append T23:59:59Z to be safe and inclusive of the day?
+		// Or just pass the date if az supports it. az policy exemption create --expires-on supports "YYYY-MM-DDThh:mm:ssZ".
+		// Let's assume the user input YYYY-MM-DD is what we want.
+		// To be safe, let's format it as RFC3339 at end of day UTC.
+		t, _ := time.Parse("2006-01-02", expirationDate)
+		// Set to 23:59:59
+		t = t.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+		args = append(args, "--expires-on", t.Format(time.RFC3339))
 	}
 	if len(referenceIDs) > 0 {
 		args = append(args, "--policy-definition-reference-ids")
