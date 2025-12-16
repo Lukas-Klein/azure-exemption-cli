@@ -534,6 +534,8 @@ func (m *model) View() string {
 		b.WriteString("\n" + m.status + "\n")
 	}
 
+	b.WriteString("\nPress q to quit")
+
 	return b.String()
 }
 
@@ -647,26 +649,39 @@ func listSubscriptions(ctx context.Context) ([]subscription, error) {
 }
 
 func listAssignments(ctx context.Context, subscriptionID string) ([]policyAssignment, error) {
-	args := []string{
-		"policy", "assignment", "list",
-		"--scope", "/subscriptions/" + subscriptionID,
-		"--subscription", subscriptionID,
-		"--disable-scope-strict-match", "true",
-		"--query", "[].{id:id,name:name,displayName:displayName,scope:scope,policyDefinitionId:policyDefinitionId}",
-		"-o", "json",
+	var allAssignments []policyAssignment
+	uri := fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/policyAssignments?api-version=2021-06-01", subscriptionID)
+
+	for uri != "" {
+		args := []string{
+			"rest",
+			"--method", "get",
+			"--uri", uri,
+			"--subscription", subscriptionID,
+			"--query", "{value:value[].{id:id,name:name,displayName:properties.displayName,scope:properties.scope,policyDefinitionId:properties.policyDefinitionId},nextLink:nextLink}",
+			"-o", "json",
+		}
+		data, err := runAzCommand(ctx, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list policy assignments: %w", err)
+		}
+
+		var result struct {
+			Value    []policyAssignment `json:"value"`
+			NextLink string             `json:"nextLink"`
+		}
+		if err := json.Unmarshal(data, &result); err != nil {
+			return nil, fmt.Errorf("unable to parse assignment data: %w", err)
+		}
+
+		allAssignments = append(allAssignments, result.Value...)
+		uri = result.NextLink
 	}
-	data, err := runAzCommand(ctx, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list policy assignments: %w", err)
-	}
-	var assignments []policyAssignment
-	if err := json.Unmarshal(data, &assignments); err != nil {
-		return nil, fmt.Errorf("unable to parse assignment data: %w", err)
-	}
-	sort.Slice(assignments, func(i, j int) bool {
-		return strings.ToLower(assignments[i].displayLabel()) < strings.ToLower(assignments[j].displayLabel())
+
+	sort.Slice(allAssignments, func(i, j int) bool {
+		return strings.ToLower(allAssignments[i].displayLabel()) < strings.ToLower(allAssignments[j].displayLabel())
 	})
-	return assignments, nil
+	return allAssignments, nil
 }
 
 func listAssignmentDefinitions(ctx context.Context, assignment policyAssignment) ([]policyDefinitionRef, error) {
