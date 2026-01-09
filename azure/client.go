@@ -165,7 +165,7 @@ func (c *Client) CreateExemption(ctx context.Context, scope string, assignment P
 		"--name", ticket,
 		"--scope", scope,
 		"--policy-assignment", assignment.ID,
-		"--display-name", fmt.Sprintf("%s exemption", ticket),
+		"--display-name", fmt.Sprintf("%s/%s %s", scope, assignment.DisplayName, ticket),
 		"--description", description,
 		"--exemption-category", "Waiver",
 		"-o", "json",
