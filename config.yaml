@@ -1,0 +1,18 @@
+# Azure Exemption CLI Configuration
+#
+# This file can be placed in one of the following locations:
+#   - ./config.yaml (current directory)
+#   - ~/.azure-exemption-cli/config.yaml
+#   - ~/.config/azure-exemption-cli/config.yaml (XDG config)
+#
+# Copy this file to one of the above locations and customize as needed.
+
+# List of policy definition IDs that cannot be exempted.
+# These definitions will appear greyed out with [blocked] indicator and
+# cannot be selected in the policy definitions list.
+#
+# Use the full Azure resource ID of the policy definition, for example:
+#   /providers/Microsoft.Authorization/policyDefinitions/<policy-guid>
+#   /subscriptions/<sub-id>/providers/Microsoft.Authorization/policyDefinitions/<policy-name>
+#
+blocked_policy_definition_ids:

@@ -125,7 +125,7 @@ func (c *Client) ListAssignmentDefinitions(ctx context.Context, assignment Polic
 	} else if sub != "" {
 		args = append(args, "--subscription", sub)
 	}
-	args = append(args, "--query", "{policyDefinitions:policyDefinitions}", "-o", "json")
+	args = append(args, "--query", "{policyDefinitions:policyDefinitions[].{policyDefinitionId:policyDefinitionId,policyDefinitionReferenceId:policyDefinitionReferenceId}}", "-o", "json")
 
 	data, err := c.runAzCommand(ctx, args...)
 	if err != nil {
@@ -158,14 +158,30 @@ func (c *Client) ListAssignmentDefinitions(ctx context.Context, assignment Polic
 	return refs, nil
 }
 
-func (c *Client) CreateExemption(ctx context.Context, scope string, assignment PolicyAssignment, referenceIDs []string, ticket, users, expirationDate string) (string, error) {
+func (c *Client) CreateExemption(ctx context.Context, scope string, scopeName string, subscriptionName string, assignment PolicyAssignment, referenceIDs []string, ticket, users, expirationDate string) (string, error) {
 	description := fmt.Sprintf("Ticket %s raised by %s on %s", ticket, users, time.Now().Format(time.RFC3339))
+
+	// Generate exemption name: <scope> - <policy name>
+	// If scoped to subscription, use subscription name
+	// If scoped to resource group, use subscription/resource-group
+	var exemptionScope string
+	if scopeName == "Entire Subscription" || scopeName == subscriptionName {
+		exemptionScope = subscriptionName
+	} else {
+		exemptionScope = fmt.Sprintf("%s/%s", subscriptionName, scopeName)
+	}
+	exemptionName := fmt.Sprintf("%s - %s", exemptionScope, assignment.DisplayLabel())
+
+	// Sanitize the exemption name (Azure has restrictions on names)
+	// Azure policy exemption names can only contain alphanumeric characters, hyphens, and underscores
+	sanitizedName := sanitizeExemptionName(exemptionName)
+
 	args := []string{
 		"policy", "exemption", "create",
-		"--name", ticket,
+		"--name", sanitizedName,
 		"--scope", scope,
 		"--policy-assignment", assignment.ID,
-		"--display-name", fmt.Sprintf("%s exemption", ticket),
+		"--display-name", exemptionName,
 		"--description", description,
 		"--exemption-category", "Waiver",
 		"-o", "json",
@@ -184,6 +200,28 @@ func (c *Client) CreateExemption(ctx context.Context, scope string, assignment P
 		return "", fmt.Errorf("failed to create policy exemption: %w", err)
 	}
 	return string(data), nil
+}
+
+// sanitizeExemptionName removes or replaces characters that are not allowed in Azure policy exemption names
+func sanitizeExemptionName(name string) string {
+	// Azure policy exemption names can only contain alphanumeric characters, hyphens, underscores, and periods
+	// The '/' character is NOT allowed as it's interpreted as a resource path separator
+	// Max length is 64 characters
+	var result strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			result.WriteRune(r)
+		} else if r == ' ' || r == '/' {
+			result.WriteRune('-')
+		}
+		// Skip other characters
+	}
+	sanitized := result.String()
+	// Trim to max 64 characters
+	if len(sanitized) > 64 {
+		sanitized = sanitized[:64]
+	}
+	return sanitized
 }
 
 func (c *Client) policyDisplayName(ctx context.Context, definitionID string) (string, error) {

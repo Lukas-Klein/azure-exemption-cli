@@ -8,17 +8,52 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+var (
+	// Style for selected/highlighted items
+	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+
+	// Style for title/header
+	titleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
+
+	// Style for key hints (e.g., "Enter", "Backspace", "↑/↓")
+	keyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
+
+	// Style for action hints (e.g., "type to search")
+	actionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
+
+	// Style for search query
+	searchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("213")).Bold(true)
+
+	// Style for success messages
+	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
+
+	// Style for error messages
+	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
+
+	// Style for dim/secondary text
+	dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+
+	// Style for labels in confirmation
+	labelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("81"))
+
+	// Style for loading/fetching messages (pastel blue/cyan)
+	loadingStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("117")).Italic(true)
+)
 
 const maxVisibleSubscriptions = 15
 
+// Helper function to format instruction hints
+func formatHint(keys string, action string) string {
+	return keyStyle.Render(keys) + " " + action
+}
+
 func (m *Model) View() string {
 	var b strings.Builder
-	b.WriteString("Azure Policy Exemption CLI\n\n")
+	b.WriteString(titleStyle.Render("Azure Policy Exemption CLI") + "\n\n")
 
 	switch m.Step {
 	case StepLoadingSubscriptions:
-		b.WriteString("Retrieving subscriptions via Azure CLI...\n")
+		b.WriteString(loadingStyle.Render("Retrieving subscriptions via Azure CLI...") + "\n")
 
 	case StepSelectSubscription:
 		b.WriteString("Select the subscription for the exemption:\n\n")
@@ -39,11 +74,16 @@ func (m *Model) View() string {
 			}
 			fmt.Fprintf(&b, "%s\n", line)
 		}
-		fmt.Fprintf(&b, "\nShowing %d-%d of %d\n", start+1, end, len(m.Subscriptions))
-		b.WriteString("↑/↓ to move, Enter to select.\n")
+		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.Subscriptions))) + "\n")
+		if m.SubscriptionSearch != "" {
+			b.WriteString("Search: " + searchStyle.Render(m.SubscriptionSearch) + "\n")
+			b.WriteString(formatHint("Type", "to search") + ", " + formatHint("Esc", "to clear") + ", " + formatHint("Enter", "to select") + "\n")
+		} else {
+			b.WriteString(formatHint("↑/↓", "move") + ", " + actionStyle.Render("type to search") + ", " + formatHint("Enter", "select") + "\n")
+		}
 
 	case StepLoadingAssignments:
-		b.WriteString("Loading policy assignments for the selected subscription...\n")
+		b.WriteString(loadingStyle.Render("Loading policy assignments for the selected subscription...") + "\n")
 
 	case StepSelectAssignment:
 		sub := m.CurrentSubscription()
@@ -51,25 +91,34 @@ func (m *Model) View() string {
 		start, end := visibleRange(m.Cursor, len(m.Assignments), maxVisibleSubscriptions)
 		for i := start; i < end; i++ {
 			assign := m.Assignments[i]
+			isBlocked := m.IsDefinitionBlocked(assign.PolicyDefinitionID)
 			cursor := " "
 			if i == m.Cursor {
 				cursor = ">"
 			}
 			marker := " "
-			if i == m.SelectedAssignment {
+			if isBlocked {
+				marker = "-" // Blocked indicator
+			} else if i == m.SelectedAssignment {
 				marker = "x"
 			}
-			line := fmt.Sprintf("%s [%s] %s (%s)", cursor, marker, assign.DisplayLabel(), assign.ShortID())
-			if i == m.Cursor {
-				line = selectedStyle.Render(line)
+			var line string
+			if isBlocked {
+				line = fmt.Sprintf("%s [%s] %s (%s) [blocked]", cursor, marker, assign.DisplayLabel(), assign.ShortID())
+				line = dimStyle.Render(line)
+			} else {
+				line = fmt.Sprintf("%s [%s] %s (%s)", cursor, marker, assign.DisplayLabel(), assign.ShortID())
+				if i == m.Cursor {
+					line = selectedStyle.Render(line)
+				}
 			}
 			fmt.Fprintf(&b, "%s\n", line)
 		}
-		fmt.Fprintf(&b, "\nShowing %d-%d of %d\n", start+1, end, len(m.Assignments))
-		b.WriteString("↑/↓ to move, Enter to select.\n")
+		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.Assignments))) + "\n")
+		b.WriteString(formatHint("↑/↓", "move") + ", " + formatHint("Enter", "select") + ", " + formatHint("Backspace", "go back") + "\n")
 
 	case StepLoadingAssignmentDefinitions:
-		b.WriteString("Loading assignment details...\n")
+		b.WriteString(loadingStyle.Render("Loading assignment details...") + "\n")
 
 	case StepAssignmentScope:
 		b.WriteString("This assignment contains multiple policy definitions.\n\n")
@@ -85,32 +134,41 @@ func (m *Model) View() string {
 			}
 			fmt.Fprintf(&b, "%s\n", line)
 		}
-		b.WriteString("\n↑/↓ to move, Enter to choose.\n")
+		b.WriteString("\n" + formatHint("↑/↓", "move") + ", " + formatHint("Enter", "choose") + ", " + formatHint("Backspace", "go back") + "\n")
 
 	case StepSelectDefinitions:
 		b.WriteString("Select the policy definitions to exempt:\n\n")
 		start, end := visibleRange(m.Cursor, len(m.AssignmentDefinitions), maxVisibleSubscriptions)
 		for i := start; i < end; i++ {
 			ref := m.AssignmentDefinitions[i]
+			isBlocked := m.IsDefinitionBlocked(ref.PolicyDefinitionID)
 			cursor := " "
 			if i == m.Cursor {
 				cursor = ">"
 			}
 			marker := " "
-			if m.SelectedDefinitionIDs[ref.ReferenceID] {
+			if isBlocked {
+				marker = "-" // Blocked indicator
+			} else if m.SelectedDefinitionIDs[ref.ReferenceID] {
 				marker = "x"
 			}
-			line := fmt.Sprintf("%s [%s] %s (%s)", cursor, marker, ref.DisplayName, ref.ReferenceID)
-			if i == m.Cursor {
-				line = selectedStyle.Render(line)
+			var line string
+			if isBlocked {
+				line = fmt.Sprintf("%s [%s] %s (%s) [blocked]", cursor, marker, ref.DisplayName, ref.ReferenceID)
+				line = dimStyle.Render(line)
+			} else {
+				line = fmt.Sprintf("%s [%s] %s (%s)", cursor, marker, ref.DisplayName, ref.ReferenceID)
+				if i == m.Cursor {
+					line = selectedStyle.Render(line)
+				}
 			}
 			fmt.Fprintf(&b, "%s\n", line)
 		}
-		fmt.Fprintf(&b, "\nShowing %d-%d of %d\n", start+1, end, len(m.AssignmentDefinitions))
-		b.WriteString("↑/↓ to move, Space to toggle, Enter to continue.\n")
+		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.AssignmentDefinitions))) + "\n")
+		b.WriteString(formatHint("↑/↓", "move") + ", " + formatHint("Space", "toggle") + ", " + formatHint("Enter", "continue") + ", " + formatHint("Backspace", "go back") + "\n")
 
 	case StepLoadingResourceGroups:
-		b.WriteString("Loading resource groups...\n")
+		b.WriteString(loadingStyle.Render("Loading resource groups...") + "\n")
 
 	case StepSelectResourceGroup:
 		b.WriteString("Select the scope for the exemption:\n\n")
@@ -131,29 +189,32 @@ func (m *Model) View() string {
 			}
 			fmt.Fprintf(&b, "%s\n", line)
 		}
-		fmt.Fprintf(&b, "\nShowing %d-%d of %d\n", start+1, end, len(m.ResourceGroups))
-		b.WriteString("↑/↓ to move, Enter to select.\n")
+		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.ResourceGroups))) + "\n")
+		b.WriteString(formatHint("↑/↓", "move") + ", " + formatHint("Enter", "select") + ", " + formatHint("Backspace", "go back") + "\n")
 
 	case StepTicket:
 		assign := m.CurrentAssignment()
-		fmt.Fprintf(&b, "Assignment selected: %s\n\n", assign.DisplayLabel())
+		fmt.Fprintf(&b, labelStyle.Render("Assignment: ")+"%s\n\n", assign.DisplayLabel())
 		if m.PartialExemption && len(m.SelectedDefinitionIDs) > 0 {
-			b.WriteString("Definitions selected:\n")
+			b.WriteString(labelStyle.Render("Definitions selected:") + "\n")
 			for _, ref := range m.AssignmentDefinitions {
 				if m.SelectedDefinitionIDs[ref.ReferenceID] {
-					fmt.Fprintf(&b, "• %s (%s)\n", ref.DisplayName, ref.ReferenceID)
+					fmt.Fprintf(&b, "  • %s\n", ref.DisplayName)
 				}
 			}
 			b.WriteString("\n")
 		}
 		b.WriteString("Provide the tracking ticket number linked to this exemption:\n\n")
 		b.WriteString(m.TicketInput.View() + "\n")
+		b.WriteString("\n" + formatHint("Backspace", "on empty input to go back") + "\n")
 
 	case StepUsers:
 		assign := m.CurrentAssignment()
-		fmt.Fprintf(&b, "Ticket: %s\nAssignment: %s\n\n", m.Ticket, assign.DisplayLabel())
+		b.WriteString(labelStyle.Render("Ticket: ") + m.Ticket + "\n")
+		b.WriteString(labelStyle.Render("Assignment: ") + assign.DisplayLabel() + "\n\n")
 		b.WriteString("Who is requesting this exemption? (comma separated)\n\n")
 		b.WriteString(m.UserInput.View() + "\n")
+		b.WriteString("\n" + formatHint("Backspace", "on empty input to go back") + "\n")
 
 	case StepExpirationChoice:
 		b.WriteString("Do you want to set an expiration date?\n\n")
@@ -169,56 +230,65 @@ func (m *Model) View() string {
 			}
 			fmt.Fprintf(&b, "%s\n", line)
 		}
-		b.WriteString("\n↑/↓ to move, Enter to choose.\n")
+		b.WriteString("\n" + formatHint("↑/↓", "move") + ", " + formatHint("Enter", "choose") + ", " + formatHint("Backspace", "go back") + "\n")
 
 	case StepExpirationDate:
 		b.WriteString("Enter the expiration date (YYYY-MM-DD):\n\n")
 		b.WriteString(m.ExpirationInput.View() + "\n")
+		b.WriteString("\n" + formatHint("Backspace", "on empty input to go back") + "\n")
 
 	case StepConfirm:
+		b.WriteString(titleStyle.Render("Review Exemption Details") + "\n\n")
 		sub := m.CurrentSubscription()
 		assign := m.CurrentAssignment()
 		rg := m.ResourceGroups[m.SelectedResourceGroup]
-		fmt.Fprintf(&b, "Subscription: %s (%s)\n", sub.Name, sub.ShortID())
-		fmt.Fprintf(&b, "Scope: %s\n", rg.Name)
-		fmt.Fprintf(&b, "Assignment: %s\n", assign.DisplayLabel())
+		b.WriteString(labelStyle.Render("Subscription: ") + fmt.Sprintf("%s (%s)\n", sub.Name, sub.ShortID()))
+		b.WriteString(labelStyle.Render("Scope: ") + rg.Name + "\n")
+		b.WriteString(labelStyle.Render("Assignment: ") + assign.DisplayLabel() + "\n")
 		if m.PartialExemption && len(m.SelectedDefinitionIDs) > 0 {
-			b.WriteString("Definitions:\n")
+			b.WriteString(labelStyle.Render("Definitions:") + "\n")
 			for _, ref := range m.AssignmentDefinitions {
 				if m.SelectedDefinitionIDs[ref.ReferenceID] {
-					fmt.Fprintf(&b, "  %s (%s)\n", ref.DisplayName, ref.ReferenceID)
+					fmt.Fprintf(&b, "  • %s\n", ref.DisplayName)
 				}
 			}
 		} else {
-			b.WriteString("Definitions: Entire assignment\n")
+			b.WriteString(labelStyle.Render("Definitions: ") + "Entire assignment\n")
 		}
-		fmt.Fprintf(&b, "Ticket: %s\n", m.Ticket)
-		fmt.Fprintf(&b, "Requesters: %s\n", m.RequestUser)
+		b.WriteString(labelStyle.Render("Ticket: ") + m.Ticket + "\n")
+		b.WriteString(labelStyle.Render("Requesters: ") + m.RequestUser + "\n")
 		if m.ExpirationDate != "" {
-			fmt.Fprintf(&b, "Expires on: %s\n", m.ExpirationDate)
+			b.WriteString(labelStyle.Render("Expires on: ") + m.ExpirationDate + "\n")
 		} else {
-			b.WriteString("Expires on: Unlimited\n")
+			b.WriteString(labelStyle.Render("Expires on: ") + "Unlimited\n")
 		}
-		b.WriteString("\nPress Enter to create the exemption or q to abort.\n")
+		b.WriteString("\n" + formatHint("Enter", "create exemption") + ", " + formatHint("Backspace", "go back") + ", " + formatHint("q", "abort") + "\n")
 
 	case StepCreating:
-		b.WriteString("Creating policy exemption via Azure CLI...\n")
+		b.WriteString(loadingStyle.Render("Creating policy exemption via Azure CLI...") + "\n")
 
 	case StepDone:
-		b.WriteString("Azure CLI response:\n\n")
+		b.WriteString(successStyle.Render("Exemption created successfully!") + "\n\n")
+		b.WriteString(dimStyle.Render("Azure CLI response:") + "\n\n")
 		if m.CreateOutput == "" {
-			b.WriteString("No output returned.\n")
+			b.WriteString(dimStyle.Render("No output returned.") + "\n")
 		} else {
 			b.WriteString(m.CreateOutput + "\n")
 		}
-		b.WriteString("\nPress q to exit.\n")
+		b.WriteString("\n" + formatHint("Enter", "create another exemption") + ", " + formatHint("q", "exit") + "\n")
 
 	case StepError:
-		fmt.Fprintf(&b, "Error: %v\n\nPress q to exit.\n", m.Err)
+		b.WriteString(errorStyle.Render("Error: ") + fmt.Sprintf("%v\n\n", m.Err))
+		b.WriteString(formatHint("q", "exit") + "\n")
 	}
 
 	if m.Status != "" {
-		b.WriteString("\n" + m.Status + "\n")
+		b.WriteString("\n" + errorStyle.Render(m.Status) + "\n")
+	}
+
+	// Add global quit hint for steps that don't already show it
+	if m.Step != StepDone && m.Step != StepError && m.Step != StepConfirm {
+		b.WriteString("\n" + dimStyle.Render("Press "+keyStyle.Render("q")+" to quit at any time.") + "\n")
 	}
 
 	return b.String()

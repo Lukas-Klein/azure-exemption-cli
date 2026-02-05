@@ -60,13 +60,13 @@ func fetchResourceGroupsCmd(ctx context.Context, client *azure.Client, sub azure
 	}
 }
 
-func createExemptionCmd(ctx context.Context, client *azure.Client, scope string, assignment azure.PolicyAssignment, selectedDefinitionIDs map[string]bool, ticket, users, expirationDate string) tea.Cmd {
+func createExemptionCmd(ctx context.Context, client *azure.Client, scope string, scopeName string, subscriptionName string, assignment azure.PolicyAssignment, selectedDefinitionIDs map[string]bool, ticket, users, expirationDate string) tea.Cmd {
 	return func() tea.Msg {
 		var refs []string
 		for ref := range selectedDefinitionIDs {
 			refs = append(refs, ref)
 		}
-		output, err := client.CreateExemption(ctx, scope, assignment, refs, ticket, users, expirationDate)
+		output, err := client.CreateExemption(ctx, scope, scopeName, subscriptionName, assignment, refs, ticket, users, expirationDate)
 		return exemptionCreatedMsg{output: output, err: err}
 	}
 }
