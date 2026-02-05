@@ -32,6 +32,64 @@ go build -o azure-exemption-cli main.go
 
 Follow the on-screen instructions. Use `↑/↓` to navigate lists, `Space` to toggle selections, and `Enter` to confirm. Press `q` at any time to quit.
 
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `↑/↓` or `k/j` | Navigate lists |
+| `Enter` | Confirm selection |
+| `Space` | Toggle selection (in multi-select lists) |
+| `Backspace` | Go back to previous step |
+| `q` | Quit the application |
+| Type characters | Search/filter subscriptions |
+| `Esc` | Clear search |
+
+## Configuration
+
+The CLI supports an optional configuration file to customize behavior. The config file is searched in the following locations (first match wins):
+
+1. `./config.yaml` (current directory)
+2. `./config.yml`
+3. `~/.azure-exemption-cli/config.yaml`
+4. `~/.azure-exemption-cli/config.yml`
+5. `$XDG_CONFIG_HOME/azure-exemption-cli/config.yaml` (or `~/.config/azure-exemption-cli/config.yaml`)
+
+See `config.yaml.example` for a sample configuration file.
+
+### Blocking Policy Definitions
+
+You can configure a list of policy definitions that cannot be exempted. This is useful for enforcing compliance by preventing exemptions on critical security or governance policies.
+
+```yaml
+blocked_policy_definition_ids:
+  - /providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c
+```
+
+**How it works:**
+
+- The blocked list uses **policy definition IDs** (not assignment IDs)
+- A single policy definition can be used by multiple policy assignments across your environment
+- When you block a policy definition, **all assignments using that definition** will be blocked
+- Blocked assignments appear greyed out with a `[-]` marker and `[blocked]` label
+- Attempting to select a blocked assignment shows an error message
+
+**Example:** If you block the "Inherit a tag from the subscription" policy definition, any policy assignment that uses this definition will be blocked - whether it's a standalone assignment or part of a policy set (initiative).
+
+**Finding Policy Definition IDs:**
+
+You can find policy definition IDs using the Azure CLI:
+
+```bash
+# List all policy definitions
+az policy definition list --query "[].{name:name, displayName:displayName, id:id}" -o table
+
+# Find a specific policy by display name
+az policy definition list --query "[?contains(displayName, 'Inherit a tag')].{displayName:displayName, id:id}" -o table
+
+# Get the definition ID from a policy assignment
+az policy assignment show --name <assignment-name> --query "policyDefinitionId" -o tsv
+```
+
 ## Project Structure
 
 The project follows a standard Go project layout:
@@ -39,3 +97,4 @@ The project follows a standard Go project layout:
 - `main.go`: Application entry point.
 - `/azure`: Azure CLI interaction logic and types.
 - `/tui`: Bubble Tea UI model, views, and update logic.
+- `/config`: Configuration loading and parsing.

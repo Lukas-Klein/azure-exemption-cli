@@ -1,0 +1,40 @@
+# Azure Exemption CLI Configuration
+#
+# This file can be placed in one of the following locations (first match wins):
+#   1. ./config.yaml (current directory)
+#   2. ~/.azure-exemption-cli/config.yaml
+#   3. ~/.config/azure-exemption-cli/config.yaml (XDG config)
+#
+# Copy this file to one of the above locations and customize as needed.
+
+# Blocked Policy Definitions
+# --------------------------
+# List of policy definition IDs that cannot be exempted.
+#
+# IMPORTANT: This blocks by POLICY DEFINITION ID, not by assignment ID.
+# A single policy definition can be used by multiple policy assignments.
+# When you block a definition, ALL assignments using that definition will be blocked.
+#
+# For example, if you block the "Inherit a tag from the subscription" policy definition,
+# every policy assignment that uses this definition will appear greyed out and cannot
+# be selected for exemption.
+#
+# The comparison is case-insensitive, so you can use any casing.
+#
+# Format: Use the full Azure resource ID of the policy definition:
+#   - Built-in policies: /providers/Microsoft.Authorization/policyDefinitions/<guid>
+#   - Custom policies:   /subscriptions/<sub-id>/providers/Microsoft.Authorization/policyDefinitions/<name>
+#
+# To find policy definition IDs, use the Azure CLI:
+#   az policy definition list --query "[?contains(displayName, 'your search')].id" -o tsv
+#   az policy assignment show --name <assignment-name> --query "policyDefinitionId" -o tsv
+#
+blocked_policy_definition_ids:
+  # Example: Block the "Allowed locations" built-in policy
+  # - /providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c
+
+  # Example: Block "Inherit a tag from the subscription" built-in policy
+  # - /providers/Microsoft.Authorization/policyDefinitions/b27a0cbd-a167-4dfa-ae64-4337be671140
+
+  # Example: Block a custom policy definition
+  # - /subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/policyDefinitions/my-critical-policy

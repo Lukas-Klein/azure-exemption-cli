@@ -30,7 +30,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Cursor = 0
 		m.SelectedSubscription = -1
 		m.Step = StepSelectSubscription
-		m.Status = "Use ↑/↓ to highlight a subscription and press Enter to continue."
+		m.Status = "" // Help text is in the view
 		return m, nil
 
 	case assignmentsLoadedMsg:
@@ -48,7 +48,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.PartialExemption = false
 		m.Cursor = 0
 		m.Step = StepSelectAssignment
-		m.Status = "Use ↑/↓ to highlight an assignment and press Enter to continue."
+		m.Status = "" // Help text is in the view
 		return m, nil
 
 	case assignmentDefinitionsLoadedMsg:
@@ -61,11 +61,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.definitions) > 1 {
 			m.Step = StepAssignmentScope
 			m.Cursor = 0
-			m.Status = "Exempt entire assignment or select specific definitions?"
+			m.Status = "" // Help text is in the view
 		} else {
 			m.PartialExemption = false
 			m.Step = StepLoadingResourceGroups
-			m.Status = "Loading resource groups..."
+			m.Status = "" // Loading state shown in view
 			return m, fetchResourceGroupsCmd(m.ctx, m.azureClient, m.CurrentSubscription())
 		}
 		return m, nil
@@ -84,7 +84,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.SelectedResourceGroup = -1
 		m.Cursor = 0
 		m.Step = StepSelectResourceGroup
-		m.Status = "Select the scope for the exemption (Subscription or Resource Group)."
+		m.Status = "" // Help text is in the view
 		return m, nil
 
 	case exemptionCreatedMsg:
@@ -93,7 +93,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.CreateOutput = msg.output
 		m.Step = StepDone
-		m.Status = "Exemption created successfully. Press q to exit."
+		m.Status = "" // Help text is in the view
 		return m, nil
 	}
 
@@ -117,10 +117,45 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 				return nil
 			}
 			m.SelectedSubscription = m.Cursor
+			m.SubscriptionSearch = ""
 			m.Step = StepLoadingAssignments
-			sub := m.CurrentSubscription()
-			m.Status = fmt.Sprintf("Fetching policy assignments for %s...", sub.Name)
-			return fetchAssignmentsCmd(m.ctx, m.azureClient, sub)
+			m.Status = "" // Loading state shown in view
+			return fetchAssignmentsCmd(m.ctx, m.azureClient, m.CurrentSubscription())
+		case "backspace":
+			// Delete the last character from the search buffer
+			if len(m.SubscriptionSearch) > 0 {
+				m.SubscriptionSearch = m.SubscriptionSearch[:len(m.SubscriptionSearch)-1]
+				if m.SubscriptionSearch == "" {
+					m.Status = "" // Help text is in the view
+				} else {
+					// Re-search with the updated query
+					searchLower := strings.ToLower(m.SubscriptionSearch)
+					for i, sub := range m.Subscriptions {
+						if strings.Contains(strings.ToLower(sub.Name), searchLower) {
+							m.Cursor = i
+							break
+						}
+					}
+				}
+			}
+		case "esc":
+			m.SubscriptionSearch = ""
+			m.Status = "" // Help text is in the view
+		default:
+			// Handle type-ahead search for subscriptions
+			key := msg.String()
+			if len(key) == 1 && (key[0] >= 'a' && key[0] <= 'z' || key[0] >= 'A' && key[0] <= 'Z' || key[0] >= '0' && key[0] <= '9' || key[0] == ' ' || key[0] == '-' || key[0] == '_') {
+				m.SubscriptionSearch += key
+				// Find and select the subscription that matches the search
+				searchLower := strings.ToLower(m.SubscriptionSearch)
+				for i, sub := range m.Subscriptions {
+					if strings.Contains(strings.ToLower(sub.Name), searchLower) {
+						m.Cursor = i
+						break
+					}
+				}
+				m.Status = "" // Search query is shown in the view
+			}
 		}
 
 	case StepSelectAssignment:
@@ -133,15 +168,30 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			if m.Cursor < len(m.Assignments)-1 {
 				m.Cursor++
 			}
+		case "backspace":
+			// Go back to subscription selection
+			m.Step = StepSelectSubscription
+			m.Cursor = m.SelectedSubscription
+			if m.Cursor < 0 {
+				m.Cursor = 0
+			}
+			m.SelectedSubscription = -1
+			m.Status = "" // Help text is in the view
+			return nil
 		case "enter":
 			if len(m.Assignments) == 0 {
 				return nil
 			}
+			// Check if the assignment's policy definition is blocked
+			assign := m.Assignments[m.Cursor]
+			if m.IsDefinitionBlocked(assign.PolicyDefinitionID) {
+				m.Status = "This policy assignment is blocked and cannot be exempted."
+				return nil
+			}
 			m.SelectedAssignment = m.Cursor
 			m.Step = StepLoadingAssignmentDefinitions
-			assign := m.CurrentAssignment()
-			m.Status = fmt.Sprintf("Fetching assignment details for %s...", assign.DisplayLabel())
-			return fetchAssignmentDefinitionsCmd(m.ctx, m.azureClient, assign)
+			m.Status = "" // Loading state shown in view
+			return fetchAssignmentDefinitionsCmd(m.ctx, m.azureClient, m.CurrentAssignment())
 		}
 
 	case StepAssignmentScope:
@@ -154,17 +204,27 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			if m.Cursor < 1 {
 				m.Cursor++
 			}
+		case "backspace":
+			// Go back to assignment selection
+			m.Step = StepSelectAssignment
+			m.Cursor = m.SelectedAssignment
+			if m.Cursor < 0 {
+				m.Cursor = 0
+			}
+			m.SelectedAssignment = -1
+			m.Status = "" // Help text is in the view
+			return nil
 		case "enter":
 			if m.Cursor == 0 {
 				m.PartialExemption = false
 				m.Step = StepLoadingResourceGroups
-				m.Status = "Loading resource groups..."
+				m.Status = "" // Loading state shown in view
 				return fetchResourceGroupsCmd(m.ctx, m.azureClient, m.CurrentSubscription())
 			}
 			m.PartialExemption = true
 			m.Step = StepSelectDefinitions
 			m.Cursor = 0
-			m.Status = "Select definitions to exempt (space to toggle, Enter to continue)."
+			m.Status = "" // Help text is in the view
 			return nil
 		}
 
@@ -178,26 +238,39 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			if m.Cursor < len(m.AssignmentDefinitions)-1 {
 				m.Cursor++
 			}
+		case "backspace":
+			// Go back to assignment scope selection
+			m.Step = StepAssignmentScope
+			m.Cursor = 1 // "Exempt specific definitions" was selected
+			m.SelectedDefinitionIDs = make(map[string]bool)
+			m.Status = "" // Help text is in the view
+			return nil
 		case " ":
 			if len(m.AssignmentDefinitions) == 0 {
 				return nil
 			}
 			ref := m.AssignmentDefinitions[m.Cursor]
+			// Check if the definition is blocked
+			if m.IsDefinitionBlocked(ref.PolicyDefinitionID) {
+				m.Status = "This policy definition is blocked and cannot be exempted."
+				return nil
+			}
 			if m.SelectedDefinitionIDs[ref.ReferenceID] {
 				delete(m.SelectedDefinitionIDs, ref.ReferenceID)
 			} else {
 				m.SelectedDefinitionIDs[ref.ReferenceID] = true
 			}
+			m.Status = "" // Clear any previous status
 		case "enter":
 			if len(m.AssignmentDefinitions) == 0 {
 				return nil
 			}
 			if len(m.SelectedDefinitionIDs) == 0 {
-				m.Status = "Select at least one definition or choose full assignment."
+				m.Status = "Select at least one definition or go back."
 				return nil
 			}
 			m.Step = StepLoadingResourceGroups
-			m.Status = "Loading resource groups..."
+			m.Status = "" // Loading state shown in view
 			return fetchResourceGroupsCmd(m.ctx, m.azureClient, m.CurrentSubscription())
 		}
 
@@ -211,6 +284,26 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			if m.Cursor < len(m.ResourceGroups)-1 {
 				m.Cursor++
 			}
+		case "backspace":
+			// Go back to the appropriate step
+			if m.PartialExemption {
+				m.Step = StepSelectDefinitions
+				m.Cursor = 0
+				m.Status = "" // Help text is in the view
+			} else if len(m.AssignmentDefinitions) > 1 {
+				m.Step = StepAssignmentScope
+				m.Cursor = 0
+				m.Status = "" // Help text is in the view
+			} else {
+				m.Step = StepSelectAssignment
+				m.Cursor = m.SelectedAssignment
+				if m.Cursor < 0 {
+					m.Cursor = 0
+				}
+				m.SelectedAssignment = -1
+				m.Status = "" // Help text is in the view
+			}
+			return nil
 		case "enter":
 			if len(m.ResourceGroups) == 0 {
 				return nil
@@ -219,11 +312,23 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			m.Step = StepTicket
 			m.TicketInput.SetValue("")
 			m.TicketInput.Focus()
-			m.Status = "Provide the tracking ticket number linked to this exemption:"
+			m.Status = "" // Help text is in the view
 			return nil
 		}
 
 	case StepTicket:
+		// Check for backspace when input is empty to go back
+		if msg.Type == tea.KeyBackspace && m.TicketInput.Value() == "" {
+			m.Step = StepSelectResourceGroup
+			m.Cursor = m.SelectedResourceGroup
+			if m.Cursor < 0 {
+				m.Cursor = 0
+			}
+			m.SelectedResourceGroup = -1
+			m.TicketInput.Blur()
+			m.Status = "" // Help text is in the view
+			return nil
+		}
 		var textCmd tea.Cmd
 		m.TicketInput, textCmd = m.TicketInput.Update(msg)
 		if msg.Type == tea.KeyEnter {
@@ -237,12 +342,21 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			m.TicketInput.Blur()
 			m.UserInput.SetValue("")
 			m.UserInput.Focus()
-			m.Status = "Who is requesting this exemption? Provide one or more names."
+			m.Status = "" // Help text is in the view
 			return textCmd
 		}
 		return textCmd
 
 	case StepUsers:
+		// Check for backspace when input is empty to go back
+		if msg.Type == tea.KeyBackspace && m.UserInput.Value() == "" {
+			m.Step = StepTicket
+			m.UserInput.Blur()
+			m.TicketInput.SetValue(m.Ticket)
+			m.TicketInput.Focus()
+			m.Status = "" // Help text is in the view
+			return nil
+		}
 		var textCmd tea.Cmd
 		m.UserInput, textCmd = m.UserInput.Update(msg)
 		if msg.Type == tea.KeyEnter {
@@ -255,7 +369,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			m.Step = StepExpirationChoice
 			m.UserInput.Blur()
 			m.Cursor = 0
-			m.Status = "Set an expiration date for this exemption?"
+			m.Status = "" // Help text is in the view
 			return textCmd
 		}
 		return textCmd
@@ -270,23 +384,38 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			if m.Cursor < 1 {
 				m.Cursor++
 			}
+		case "backspace":
+			// Go back to users step
+			m.Step = StepUsers
+			m.UserInput.SetValue(m.RequestUser)
+			m.UserInput.Focus()
+			m.Status = "" // Help text is in the view
+			return nil
 		case "enter":
 			if m.Cursor == 0 {
 				// Unlimited
 				m.ExpirationDate = ""
 				m.Step = StepConfirm
-				m.Status = "Review the summary and press Enter to create the exemption."
+				m.Status = "" // Help text is in the view
 			} else {
 				// Set Date
 				m.Step = StepExpirationDate
 				m.ExpirationInput.SetValue(time.Now().AddDate(0, 0, 30).Format("2006-01-02"))
 				m.ExpirationInput.Focus()
-				m.Status = "Enter expiration date (YYYY-MM-DD):"
+				m.Status = "" // Help text is in the view
 			}
 			return nil
 		}
 
 	case StepExpirationDate:
+		// Check for backspace when input is empty to go back
+		if msg.Type == tea.KeyBackspace && m.ExpirationInput.Value() == "" {
+			m.Step = StepExpirationChoice
+			m.Cursor = 1 // "Set expiration date" was selected
+			m.ExpirationInput.Blur()
+			m.Status = "" // Help text is in the view
+			return nil
+		}
 		var textCmd tea.Cmd
 		m.ExpirationInput, textCmd = m.ExpirationInput.Update(msg)
 		if msg.Type == tea.KeyEnter {
@@ -298,19 +427,30 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			// Simple validation for YYYY-MM-DD
 			_, err := time.Parse("2006-01-02", value)
 			if err != nil {
-				m.Status = "Invalid date format. Please use YYYY-MM-DD."
+				m.Status = "Invalid date format. Use YYYY-MM-DD."
 				return textCmd
 			}
 			m.ExpirationDate = value
 			m.Step = StepConfirm
 			m.ExpirationInput.Blur()
-			m.Status = "Review the summary and press Enter to create the exemption."
+			m.Status = "" // Help text is in the view
 			return textCmd
 		}
 		return textCmd
 
 	case StepConfirm:
-		if msg.Type == tea.KeyEnter {
+		switch msg.String() {
+		case "backspace":
+			// Go back to the expiration choice step
+			m.Step = StepExpirationChoice
+			if m.ExpirationDate == "" {
+				m.Cursor = 0 // Unlimited was selected
+			} else {
+				m.Cursor = 1 // Set expiration date was selected
+			}
+			m.Status = "" // Help text is in the view
+			return nil
+		case "enter":
 			if m.SelectedAssignment < 0 || m.Ticket == "" || m.RequestUser == "" || m.SelectedSubscription < 0 || m.SelectedResourceGroup < 0 {
 				m.Status = "Missing information. Use q to abort."
 				return nil
@@ -318,12 +458,18 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			m.Step = StepCreating
 			assign := m.CurrentAssignment()
 			rg := m.ResourceGroups[m.SelectedResourceGroup]
-			m.Status = "Creating Azure Policy exemption..."
-			return createExemptionCmd(m.ctx, m.azureClient, rg.ID, assign, m.SelectedDefinitionIDs, m.Ticket, m.RequestUser, m.ExpirationDate)
+			sub := m.CurrentSubscription()
+			m.Status = "" // Loading state shown in view
+			return createExemptionCmd(m.ctx, m.azureClient, rg.ID, rg.Name, sub.Name, assign, m.SelectedDefinitionIDs, m.Ticket, m.RequestUser, m.ExpirationDate)
 		}
 
-	case StepError, StepDone, StepLoadingAssignmentDefinitions, StepLoadingAssignments, StepLoadingSubscriptions, StepLoadingResourceGroups, StepCreating:
+	case StepError, StepLoadingAssignmentDefinitions, StepLoadingAssignments, StepLoadingSubscriptions, StepLoadingResourceGroups, StepCreating:
 		// No interactive keys beyond quit for these states.
+	case StepDone:
+		// Allow creating a new exemption by pressing Enter
+		if msg.Type == tea.KeyEnter {
+			return m.Reset()
+		}
 	}
 
 	return nil
