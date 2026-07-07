@@ -9,6 +9,9 @@
 *.dylib
 azure-exemption-cli
 
+# GoReleaser build output
+dist/
+
 # Test binary, built with `go test -c`
 *.test
 
