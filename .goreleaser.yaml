@@ -46,5 +46,5 @@ release:
     owner: Lukas-Klein
     name: azure-exemption-cli
   draft: false
-  prerelease: auto
+  # TODO: implement propert prerelease handling
   name_template: "{{ .Tag }}"
