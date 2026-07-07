@@ -2,9 +2,56 @@
 
 A Bubble Tea terminal UI that guides you through creating Azure Policy exemptions with the Azure CLI.
 
+## Installation
+
+Download the latest binary for your platform from
+[GitHub Releases](https://github.com/Lukas-Klein/azure-exemption-cli/releases/latest).
+
+### macOS / Linux
+
+```bash
+# Set the OS and architecture (examples: darwin/arm64, darwin/amd64, linux/amd64, linux/arm64)
+OS=darwin
+ARCH=arm64
+
+curl -sL "https://github.com/Lukas-Klein/azure-exemption-cli/releases/latest/download/azure-exemption-cli_${OS}_${ARCH}.tar.gz" \
+  | tar xz azure-exemption-cli
+sudo mv azure-exemption-cli /usr/local/bin/
+```
+
+### Windows (PowerShell)
+
+```powershell
+$arch = "amd64"  # or "arm64"
+$zip  = "azure-exemption-cli_windows_${arch}.zip"
+$dest = "$env:LOCALAPPDATA\Programs\azure-exemption-cli"
+
+Invoke-WebRequest `
+  "https://github.com/Lukas-Klein/azure-exemption-cli/releases/latest/download/$zip" `
+  -OutFile "$env:TEMP\$zip"
+Expand-Archive -Path "$env:TEMP\$zip" -DestinationPath $dest -Force
+Remove-Item "$env:TEMP\$zip"
+
+# Add to PATH for the current user (persistent across sessions)
+$path = [Environment]::GetEnvironmentVariable('Path', 'User')
+if ($path -notlike "*$dest*") {
+  [Environment]::SetEnvironmentVariable('Path', "$path;$dest", 'User')
+  $env:Path += ";$dest"
+}
+```
+
+Restart your terminal, then run `azure-exemption-cli`.
+
+### Build from source
+
+Requires Go 1.21 or later:
+
+```bash
+go install github.com/Lukas-Klein/azure-exemption-cli@latest
+```
+
 ## Prerequisites
 
-- Go 1.21 or later
 - The [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) available on your `PATH`
 - Permission to list subscriptions, read policy definitions and create exemptions
 
