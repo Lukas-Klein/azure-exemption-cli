@@ -10,19 +10,19 @@ Download the latest binary for your platform from
 ### macOS / Linux
 
 ```bash
-# Set the OS and architecture (examples: darwin/arm64, darwin/amd64, linux/amd64, linux/arm64)
-OS=darwin
-ARCH=arm64
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')   # darwin / linux
+ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
+mkdir -p ~/.local/bin
 curl -sL "https://github.com/Lukas-Klein/azure-exemption-cli/releases/latest/download/azure-exemption-cli_${OS}_${ARCH}.tar.gz" \
-  | tar xz azure-exemption-cli
-sudo mv azure-exemption-cli /usr/local/bin/
+  | tar xz -C ~/.local/bin azure-exemption-cli
+chmod +x ~/.local/bin/azure-exemption-cli
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-$arch = "amd64"  # or "arm64"
+$arch = if ($env:PROCESSOR_ARCHITECTURE -eq "AMD64") { "x86_64" } else { "arm64" }
 $zip  = "azure-exemption-cli_windows_${arch}.zip"
 $dest = "$env:LOCALAPPDATA\Programs\azure-exemption-cli"
 
