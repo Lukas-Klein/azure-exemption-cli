@@ -115,7 +115,12 @@ func (m *Model) View() string {
 			fmt.Fprintf(&b, "%s\n", line)
 		}
 		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.Assignments))) + "\n")
-		b.WriteString(formatHint("↑/↓", "move") + ", " + formatHint("Enter", "select") + ", " + formatHint("Backspace", "go back") + "\n")
+		if m.AssignmentSearch != "" {
+			b.WriteString("Search: " + searchStyle.Render(m.AssignmentSearch) + "\n")
+			b.WriteString(formatHint("Type", "to search") + ", " + formatHint("Esc", "to clear") + ", " + formatHint("Enter", "select") + ", " + formatHint("Backspace", "delete") + "\n")
+		} else {
+			b.WriteString(formatHint("↑/↓", "move") + ", " + actionStyle.Render("type to search") + ", " + formatHint("Enter", "select") + ", " + formatHint("Backspace", "go back") + "\n")
+		}
 
 	case StepLoadingAssignmentDefinitions:
 		b.WriteString(loadingStyle.Render("Loading assignment details...") + "\n")
@@ -165,7 +170,12 @@ func (m *Model) View() string {
 			fmt.Fprintf(&b, "%s\n", line)
 		}
 		b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.AssignmentDefinitions))) + "\n")
-		b.WriteString(formatHint("↑/↓", "move") + ", " + formatHint("Space", "toggle") + ", " + formatHint("Enter", "continue") + ", " + formatHint("Backspace", "go back") + "\n")
+		if m.DefinitionSearch != "" {
+			b.WriteString("Search: " + searchStyle.Render(m.DefinitionSearch) + "\n")
+			b.WriteString(formatHint("Type", "to search") + ", " + formatHint("Esc", "to clear") + ", " + formatHint("Space", "toggle") + ", " + formatHint("Enter", "continue") + "\n")
+		} else {
+			b.WriteString(formatHint("↑/↓", "move") + ", " + actionStyle.Render("type to search") + ", " + formatHint("Space", "toggle") + ", " + formatHint("Enter", "continue") + ", " + formatHint("Backspace", "go back") + "\n")
+		}
 
 	case StepLoadingResourceGroups:
 		b.WriteString(loadingStyle.Render("Loading resource groups...") + "\n")

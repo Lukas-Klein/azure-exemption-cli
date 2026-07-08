@@ -63,6 +63,12 @@ type Model struct {
 	// SubscriptionSearch is the type-ahead search buffer for subscription selection
 	SubscriptionSearch string
 
+	// AssignmentSearch is the type-ahead search buffer for policy assignment selection
+	AssignmentSearch string
+
+	// DefinitionSearch is the type-ahead search buffer for policy definition selection
+	DefinitionSearch string
+
 	// BlockedDefinitionIDs contains policy definition IDs that cannot be exempted.
 	// These definitions appear greyed out and are non-selectable in the UI.
 	BlockedDefinitionIDs map[string]bool
@@ -156,6 +162,8 @@ func (m *Model) Reset() tea.Cmd {
 	m.ExpirationDate = ""
 	m.CreateOutput = ""
 	m.SubscriptionSearch = ""
+	m.AssignmentSearch = ""
+	m.DefinitionSearch = ""
 
 	m.TicketInput.SetValue("")
 	m.TicketInput.Blur()
@@ -171,4 +179,34 @@ func (m *Model) Reset() tea.Cmd {
 // The comparison is case-insensitive.
 func (m *Model) IsDefinitionBlocked(policyDefinitionID string) bool {
 	return m.BlockedDefinitionIDs[strings.ToLower(policyDefinitionID)]
+}
+
+// firstAssignmentMatch returns the index of the first non-blocked assignment whose
+// display label contains the (case-insensitive) query, or -1 if none matches.
+func (m *Model) firstAssignmentMatch(query string) int {
+	q := strings.ToLower(query)
+	for i, assign := range m.Assignments {
+		if m.IsDefinitionBlocked(assign.PolicyDefinitionID) {
+			continue
+		}
+		if strings.Contains(strings.ToLower(assign.DisplayLabel()), q) {
+			return i
+		}
+	}
+	return -1
+}
+
+// firstDefinitionMatch returns the index of the first non-blocked assignment definition
+// whose display name contains the (case-insensitive) query, or -1 if none matches.
+func (m *Model) firstDefinitionMatch(query string) int {
+	q := strings.ToLower(query)
+	for i, ref := range m.AssignmentDefinitions {
+		if m.IsDefinitionBlocked(ref.PolicyDefinitionID) {
+			continue
+		}
+		if strings.Contains(strings.ToLower(ref.DisplayName), q) {
+			return i
+		}
+	}
+	return -1
 }
