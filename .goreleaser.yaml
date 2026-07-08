@@ -54,7 +54,7 @@ homebrew_casks:
     dependencies:
       - formula: azure-cli
     url:
-      verified: github.com/lvlcn-t/azure-exemption-cli/releases/download
+      verified: github.com/Lukas-Klein/azure-exemption-cli/releases/download
     hooks:
       post:
         install: |
