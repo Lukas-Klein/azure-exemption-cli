@@ -7,6 +7,12 @@ A Bubble Tea terminal UI that guides you through creating Azure Policy exemption
 Download the latest binary for your platform from
 [GitHub Releases](https://github.com/Lukas-Klein/azure-exemption-cli/releases/latest).
 
+### Homebrew
+
+```
+brew install Lukas-Klein/tap/azure-exemption-cli
+```
+
 ### macOS / Linux
 
 ```bash
