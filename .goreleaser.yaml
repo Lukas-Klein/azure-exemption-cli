@@ -22,7 +22,8 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
 
 archives:
-  - format: tar.gz
+  - id: azure-exemption-cli
+    format: tar.gz
     name_template: >-
       {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
     format_overrides:
@@ -31,6 +32,35 @@ archives:
 
 checksum:
   name_template: checksums.txt
+
+homebrew_casks:
+  - name: azure-exemption-cli
+    ids:
+      - azure-exemption-cli
+    repository:
+      owner: Lukas-Klein
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    commit_msg_template: "feat: update {{ .ProjectName }} to {{ .Tag }}"
+    commit_author:
+      name: Lukas-Klein
+      email: 98409808+Lukas-Klein@users.noreply.github.com
+
+    homepage: https://github.com/Lukas-Klein/azure-exemption-cli
+    description: A TUI to easily create policy exemptions for customers in their environment 
+    license: MIT
+    binaries:
+      - azure-exemption-cli
+    dependencies:
+      - formula: azure-cli
+    url:
+      verified: github.com/lvlcn-t/azure-exemption-cli/releases/download
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/azure-exemption-cli"]
+          end
 
 changelog:
   sort: asc
