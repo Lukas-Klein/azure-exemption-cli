@@ -1,5 +1,4 @@
 version: 2
-
 project_name: azure-exemption-cli
 
 before:
