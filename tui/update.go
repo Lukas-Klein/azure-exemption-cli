@@ -46,6 +46,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.AssignmentDefinitions = nil
 		m.SelectedDefinitionIDs = make(map[string]bool)
 		m.PartialExemption = false
+		m.AssignmentSearch = ""
 		m.Cursor = 0
 		m.Step = StepSelectAssignment
 		m.Status = "" // Help text is in the view
@@ -144,7 +145,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		default:
 			// Handle type-ahead search for subscriptions
 			key := msg.String()
-			if len(key) == 1 && (key[0] >= 'a' && key[0] <= 'z' || key[0] >= 'A' && key[0] <= 'Z' || key[0] >= '0' && key[0] <= '9' || key[0] == ' ' || key[0] == '-' || key[0] == '_') {
+			if isSearchKey(key) {
 				m.SubscriptionSearch += key
 				// Find and select the subscription that matches the search
 				searchLower := strings.ToLower(m.SubscriptionSearch)
@@ -169,7 +170,18 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 				m.Cursor++
 			}
 		case "backspace":
-			// Go back to subscription selection
+			if m.AssignmentSearch != "" {
+				// Delete the last character from the search buffer and re-jump
+				m.AssignmentSearch = m.AssignmentSearch[:len(m.AssignmentSearch)-1]
+				if m.AssignmentSearch != "" {
+					if idx := m.firstAssignmentMatch(m.AssignmentSearch); idx >= 0 {
+						m.Cursor = idx
+					}
+				}
+				m.Status = "" // Search query is shown in the view
+				return nil
+			}
+			// Empty search: go back to subscription selection
 			m.Step = StepSelectSubscription
 			m.Cursor = m.SelectedSubscription
 			if m.Cursor < 0 {
@@ -178,6 +190,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			m.SelectedSubscription = -1
 			m.Status = "" // Help text is in the view
 			return nil
+		case "esc":
+			m.AssignmentSearch = ""
+			m.Status = "" // Help text is in the view
 		case "enter":
 			if len(m.Assignments) == 0 {
 				return nil
@@ -189,9 +204,20 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 				return nil
 			}
 			m.SelectedAssignment = m.Cursor
+			m.AssignmentSearch = ""
 			m.Step = StepLoadingAssignmentDefinitions
 			m.Status = "" // Loading state shown in view
 			return fetchAssignmentDefinitionsCmd(m.ctx, m.azureClient, m.CurrentAssignment())
+		default:
+			// Handle type-ahead search for assignments
+			key := msg.String()
+			if isSearchKey(key) {
+				m.AssignmentSearch += key
+				if idx := m.firstAssignmentMatch(m.AssignmentSearch); idx >= 0 {
+					m.Cursor = idx
+				}
+				m.Status = "" // Search query is shown in the view
+			}
 		}
 
 	case StepAssignmentScope:
@@ -223,6 +249,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			}
 			m.PartialExemption = true
 			m.Step = StepSelectDefinitions
+			m.DefinitionSearch = ""
 			m.Cursor = 0
 			m.Status = "" // Help text is in the view
 			return nil
@@ -239,12 +266,26 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 				m.Cursor++
 			}
 		case "backspace":
-			// Go back to assignment scope selection
+			if m.DefinitionSearch != "" {
+				// Delete the last character from the search buffer and re-jump
+				m.DefinitionSearch = m.DefinitionSearch[:len(m.DefinitionSearch)-1]
+				if m.DefinitionSearch != "" {
+					if idx := m.firstDefinitionMatch(m.DefinitionSearch); idx >= 0 {
+						m.Cursor = idx
+					}
+				}
+				m.Status = "" // Search query is shown in the view
+				return nil
+			}
+			// Empty search: go back to assignment scope selection
 			m.Step = StepAssignmentScope
 			m.Cursor = 1 // "Exempt specific definitions" was selected
 			m.SelectedDefinitionIDs = make(map[string]bool)
 			m.Status = "" // Help text is in the view
 			return nil
+		case "esc":
+			m.DefinitionSearch = ""
+			m.Status = "" // Help text is in the view
 		case " ":
 			if len(m.AssignmentDefinitions) == 0 {
 				return nil
@@ -269,9 +310,21 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 				m.Status = "Select at least one definition or go back."
 				return nil
 			}
+			m.DefinitionSearch = ""
 			m.Step = StepLoadingResourceGroups
 			m.Status = "" // Loading state shown in view
 			return fetchResourceGroupsCmd(m.ctx, m.azureClient, m.CurrentSubscription())
+		default:
+			// Handle type-ahead search for definitions.
+			// Space is reserved for toggling, so it is excluded from the search whitelist.
+			key := msg.String()
+			if isSearchKey(key) && key != " " {
+				m.DefinitionSearch += key
+				if idx := m.firstDefinitionMatch(m.DefinitionSearch); idx >= 0 {
+					m.Cursor = idx
+				}
+				m.Status = "" // Search query is shown in the view
+			}
 		}
 
 	case StepSelectResourceGroup:
@@ -288,6 +341,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			// Go back to the appropriate step
 			if m.PartialExemption {
 				m.Step = StepSelectDefinitions
+				m.DefinitionSearch = ""
 				m.Cursor = 0
 				m.Status = "" // Help text is in the view
 			} else if len(m.AssignmentDefinitions) > 1 {
@@ -473,4 +527,19 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	return nil
+}
+
+// isSearchKey reports whether a key press should be appended to a type-ahead
+// search buffer. Only single printable characters in the whitelist
+// [a-zA-Z0-9 _-] are accepted; this mirrors the characters allowed when
+// searching subscriptions.
+func isSearchKey(key string) bool {
+	if len(key) != 1 {
+		return false
+	}
+	c := key[0]
+	return (c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') ||
+		c == ' ' || c == '-' || c == '_'
 }
