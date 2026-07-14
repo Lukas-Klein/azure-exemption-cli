@@ -33,7 +33,7 @@ const (
 
 type Model struct {
 	ctx         context.Context
-	azureClient *azure.Client
+	azureClient azureClient
 
 	Step   Step
 	Status string
@@ -74,7 +74,7 @@ type Model struct {
 	BlockedDefinitionIDs map[string]bool
 }
 
-func NewModel(ctx context.Context, client *azure.Client, blockedDefinitionIDs map[string]bool) *Model {
+func NewModel(ctx context.Context, client azureClient, blockedDefinitionIDs map[string]bool) *Model {
 	ticketInput := textinput.New()
 	ticketInput.Placeholder = "e.g. INC123456"
 	ticketInput.Prompt = "Ticket> "
