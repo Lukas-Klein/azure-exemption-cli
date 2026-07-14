@@ -26,6 +26,8 @@ func DefaultConfigPaths() []string {
 	// Add user home directory config
 	if home, err := os.UserHomeDir(); err == nil {
 		paths = append(paths,
+			filepath.Join(home, ".azexempt", "config.yaml"),
+			filepath.Join(home, ".azexempt", "config.yml"),
 			filepath.Join(home, ".azure-exemption-cli", "config.yaml"),
 			filepath.Join(home, ".azure-exemption-cli", "config.yml"),
 		)
@@ -34,11 +36,15 @@ func DefaultConfigPaths() []string {
 	// Add XDG config directory
 	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
 		paths = append(paths,
+			filepath.Join(xdgConfig, "azexempt", "config.yaml"),
+			filepath.Join(xdgConfig, "azexempt", "config.yml"),
 			filepath.Join(xdgConfig, "azure-exemption-cli", "config.yaml"),
 			filepath.Join(xdgConfig, "azure-exemption-cli", "config.yml"),
 		)
 	} else if home, err := os.UserHomeDir(); err == nil {
 		paths = append(paths,
+			filepath.Join(home, ".config", "azexempt", "config.yaml"),
+			filepath.Join(home, ".config", "azexempt", "config.yml"),
 			filepath.Join(home, ".config", "azure-exemption-cli", "config.yaml"),
 			filepath.Join(home, ".config", "azure-exemption-cli", "config.yml"),
 		)

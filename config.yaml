@@ -2,8 +2,8 @@
 #
 # This file can be placed in one of the following locations:
 #   - ./config.yaml (current directory)
-#   - ~/.azure-exemption-cli/config.yaml
-#   - ~/.config/azure-exemption-cli/config.yaml (XDG config)
+#   - ~/.azexempt/config.yaml
+#   - ~/.config/azexempt/config.yaml (XDG config)
 #
 # Copy this file to one of the above locations and customize as needed.
 

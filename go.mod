@@ -1,4 +1,4 @@
-module github.com/Lukas-Klein/azure-exemption-cli
+module github.com/Lukas-Klein/azexempt
 
 go 1.25.5
 

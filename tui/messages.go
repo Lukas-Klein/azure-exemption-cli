@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/Lukas-Klein/azure-exemption-cli/azure"
+	"github.com/Lukas-Klein/azexempt/azure"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

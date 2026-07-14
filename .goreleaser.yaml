@@ -1,5 +1,5 @@
 version: 2
-project_name: azure-exemption-cli
+project_name: azexempt
 
 before:
   hooks:
@@ -7,7 +7,7 @@ before:
 
 builds:
   - main: .
-    binary: azure-exemption-cli
+    binary: azexempt
     env:
       - CGO_ENABLED=0
     goos:
@@ -21,21 +21,23 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
 
 archives:
-  - id: azure-exemption-cli
-    format: tar.gz
+  - id: azexempt
+    formats:
+      - tar.gz
     name_template: >-
       {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
 
 checksum:
   name_template: checksums.txt
 
 homebrew_casks:
-  - name: azure-exemption-cli
+  - name: azexempt
     ids:
-      - azure-exemption-cli
+      - azexempt
     repository:
       owner: Lukas-Klein
       name: homebrew-tap
@@ -45,20 +47,20 @@ homebrew_casks:
       name: Lukas-Klein
       email: 98409808+Lukas-Klein@users.noreply.github.com
 
-    homepage: https://github.com/Lukas-Klein/azure-exemption-cli
+    homepage: https://github.com/Lukas-Klein/azexempt
     description: A TUI to easily create policy exemptions for customers in their environment 
     license: MIT
     binaries:
-      - azure-exemption-cli
+      - azexempt
     dependencies:
       - formula: azure-cli
     url:
-      verified: github.com/Lukas-Klein/azure-exemption-cli/releases/download
+      verified: github.com/Lukas-Klein/azexempt/releases/download
     hooks:
       post:
         install: |
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/azure-exemption-cli"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/azexempt"]
           end
 
 changelog:
@@ -73,7 +75,7 @@ changelog:
 release:
   github:
     owner: Lukas-Klein
-    name: azure-exemption-cli
+    name: azexempt
   draft: false
   # TODO: implement propert prerelease handling
   name_template: "{{ .Tag }}"
