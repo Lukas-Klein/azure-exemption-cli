@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for agents working in `azure-exemption-cli`: a single-binary
+Guidance for agents working in `azexempt`: a single-binary
 Bubble Tea TUI that walks a user through creating an Azure Policy
 exemption. Written in Go.
 
@@ -8,7 +8,7 @@ exemption. Written in Go.
 
 ```bash
 go run main.go              # run the TUI (version reports "dev")
-go build -o azure-exemption-cli main.go
+go build -o azexempt main.go
 go run main.go --version    # version/commit/date (only meaningful in release builds)
 go vet ./...
 go mod tidy                 # GoReleaser runs this before every build
@@ -67,6 +67,6 @@ Package layout:
   in tests.
 - `config.yaml` at the repo root **is committed** (it is the example,
   not gitignored). Don't put real secrets there.
-- Module path is `github.com/Lukas-Klein/azure-exemption-cli` even though
+- Module path is `github.com/Lukas-Klein/azexempt` even though
   the local checkout lives under a `Privat/` directory — keep import
   paths as-is.

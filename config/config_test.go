@@ -84,8 +84,12 @@ func TestDefaultConfigPaths(t *testing.T) {
 	want := []string{
 		"config.yaml",
 		"config.yml",
+		filepath.Join(home, ".azexempt", "config.yaml"),
+		filepath.Join(home, ".azexempt", "config.yml"),
 		filepath.Join(home, ".azure-exemption-cli", "config.yaml"),
 		filepath.Join(home, ".azure-exemption-cli", "config.yml"),
+		filepath.Join(xdg, "azexempt", "config.yaml"),
+		filepath.Join(xdg, "azexempt", "config.yml"),
 		filepath.Join(xdg, "azure-exemption-cli", "config.yaml"),
 		filepath.Join(xdg, "azure-exemption-cli", "config.yml"),
 	}

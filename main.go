@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Lukas-Klein/azure-exemption-cli/azure"
-	"github.com/Lukas-Klein/azure-exemption-cli/config"
-	"github.com/Lukas-Klein/azure-exemption-cli/tui"
+	"github.com/Lukas-Klein/azexempt/azure"
+	"github.com/Lukas-Klein/azexempt/config"
+	"github.com/Lukas-Klein/azexempt/tui"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -20,7 +20,7 @@ var (
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		fmt.Printf("azure-exemption-cli %s (commit: %s, built: %s)\n", version, commit, date)
+		fmt.Printf("azexempt %s (commit: %s, built: %s)\n", version, commit, date)
 		os.Exit(0)
 	}
 

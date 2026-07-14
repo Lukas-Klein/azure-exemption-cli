@@ -1,16 +1,16 @@
-# azure-exemption-cli
+# azexempt
 
 A Bubble Tea terminal UI that guides you through creating Azure Policy exemptions with the Azure CLI.
 
 ## Installation
 
 Download the latest binary for your platform from
-[GitHub Releases](https://github.com/Lukas-Klein/azure-exemption-cli/releases/latest).
+[GitHub Releases](https://github.com/Lukas-Klein/azexempt/releases/latest).
 
 ### Homebrew
 
 ```
-brew install Lukas-Klein/tap/azure-exemption-cli
+brew install Lukas-Klein/tap/azexempt
 ```
 
 ### macOS / Linux
@@ -20,20 +20,20 @@ OS=$(uname -s | tr '[:upper:]' '[:lower:]')   # darwin / linux
 ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
 mkdir -p ~/.local/bin
-curl -sL "https://github.com/Lukas-Klein/azure-exemption-cli/releases/latest/download/azure-exemption-cli_${OS}_${ARCH}.tar.gz" \
-  | tar xz -C ~/.local/bin azure-exemption-cli
-chmod +x ~/.local/bin/azure-exemption-cli
+curl -sL "https://github.com/Lukas-Klein/azexempt/releases/latest/download/azexempt_${OS}_${ARCH}.tar.gz" \
+  | tar xz -C ~/.local/bin azexempt
+chmod +x ~/.local/bin/azexempt
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "AMD64") { "x86_64" } else { "arm64" }
-$zip  = "azure-exemption-cli_windows_${arch}.zip"
-$dest = "$env:LOCALAPPDATA\Programs\azure-exemption-cli"
+$zip  = "azexempt_windows_${arch}.zip"
+$dest = "$env:LOCALAPPDATA\Programs\azexempt"
 
 Invoke-WebRequest `
-  "https://github.com/Lukas-Klein/azure-exemption-cli/releases/latest/download/$zip" `
+  "https://github.com/Lukas-Klein/azexempt/releases/latest/download/$zip" `
   -OutFile "$env:TEMP\$zip"
 Expand-Archive -Path "$env:TEMP\$zip" -DestinationPath $dest -Force
 Remove-Item "$env:TEMP\$zip"
@@ -46,14 +46,14 @@ if ($path -notlike "*$dest*") {
 }
 ```
 
-Restart your terminal, then run `azure-exemption-cli`.
+Restart your terminal, then run `azexempt`.
 
 ### Build from source
 
 Requires Go 1.21 or later:
 
 ```bash
-go install github.com/Lukas-Klein/azure-exemption-cli@latest
+go install github.com/Lukas-Klein/azexempt@latest
 ```
 
 ## Prerequisites
@@ -79,8 +79,8 @@ go install github.com/Lukas-Klein/azure-exemption-cli@latest
 go run main.go
 
 # Or build and run
-go build -o azure-exemption-cli main.go
-./azure-exemption-cli
+go build -o azexempt main.go
+./azexempt
 ```
 
 Follow the on-screen instructions. Use `↑/↓` to navigate lists, `Space` to toggle selections, and `Enter` to confirm. Press `q` at any time to quit.
@@ -103,9 +103,11 @@ The CLI supports an optional configuration file to customize behavior. The confi
 
 1. `./config.yaml` (current directory)
 2. `./config.yml`
-3. `~/.azure-exemption-cli/config.yaml`
-4. `~/.azure-exemption-cli/config.yml`
-5. `$XDG_CONFIG_HOME/azure-exemption-cli/config.yaml` (or `~/.config/azure-exemption-cli/config.yaml`)
+3. `~/.azexempt/config.yaml`
+4. `~/.azexempt/config.yml`
+5. `$XDG_CONFIG_HOME/azexempt/config.yaml` (or `~/.config/azexempt/config.yaml`)
+
+Legacy `azure-exemption-cli` config directories are also supported for upgrades.
 
 See `config.yaml.example` for a sample configuration file.
 
