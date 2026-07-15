@@ -29,7 +29,7 @@ func TestListSubscriptionsAndResourceGroups(t *testing.T) {
 	if got := []string{rgs[0].Name, rgs[1].Name}; !reflect.DeepEqual(got, []string{"East", "west"}) {
 		t.Fatalf("resource groups = %#v", got)
 	}
-	assertLogContains(t, log, "account list --query [].{name:name,id:id} -o json")
+	assertLogContains(t, log, "account list --query [?tenantId==''].{name:name,id:id} -o json")
 	assertLogContains(t, log, "group list --subscription sub-1 --query [].{name:name,id:id} -o json")
 }
 
