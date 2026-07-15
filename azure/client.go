@@ -285,7 +285,7 @@ func (c *Client) parsePolicyID(id string) (name, subscription, managementGroup s
 func (c *Client) getActiveTenantID(ctx context.Context) (string, error) {
 	data, err := c.runAzCommand(ctx, "account", "show", "--query", "tenantId", "-o", "tsv")
 	if err != nil {
-		return "", fmt.Errorf("failed to get active tenant ID: %w", err)
+		return "", fmt.Errorf("az account show failed: %w", err)
 	}
 	tenantID := strings.TrimSpace(string(data))
 	if tenantID == "" {
