@@ -283,13 +283,15 @@ func (c *Client) parsePolicyID(id string) (name, subscription, managementGroup s
 }
 
 func (c *Client) getActiveTenantID(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, "az", "account", "show", "--query", "tenantId", "-o", "tsv")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil {
+	data, err := c.runAzCommand(ctx, "account", "show", "--query", "tenantId", "-o", "tsv")
+	if err != nil {
 		return "", fmt.Errorf("failed to get active tenant ID: %w", err)
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	tenantID := strings.TrimSpace(string(data))
+	if tenantID == "" {
+		return "", fmt.Errorf("active tenant ID is empty")
+	}
+	return tenantID, nil
 }
 
 func (c *Client) runAzCommand(ctx context.Context, args ...string) ([]byte, error) {
