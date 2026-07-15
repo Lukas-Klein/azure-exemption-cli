@@ -11,6 +11,7 @@ import (
 
 func TestListSubscriptionsAndResourceGroups(t *testing.T) {
 	log := installFakeAz(t)
+	t.Setenv("AZ_ACCOUNT_SHOW_TENANT_ID", "test-tenant-id")
 	t.Setenv("AZ_ACCOUNT_LIST", `[{"name":"zeta","id":"2"},{"name":"Alpha","id":"1"}]`)
 	t.Setenv("AZ_GROUP_LIST", `[{"name":"west","id":"/west"},{"name":"East","id":"/east"}]`)
 
@@ -29,12 +30,13 @@ func TestListSubscriptionsAndResourceGroups(t *testing.T) {
 	if got := []string{rgs[0].Name, rgs[1].Name}; !reflect.DeepEqual(got, []string{"East", "west"}) {
 		t.Fatalf("resource groups = %#v", got)
 	}
-	assertLogContains(t, log, "account list --query [?tenantId==''].{name:name,id:id} -o json")
+	assertLogContains(t, log, "account list --query [?tenantId=='test-tenant-id'].{name:name,id:id} -o json")
 	assertLogContains(t, log, "group list --subscription sub-1 --query [].{name:name,id:id} -o json")
 }
 
 func TestListCommandErrors(t *testing.T) {
 	installFakeAz(t)
+	t.Setenv("AZ_ACCOUNT_SHOW_TENANT_ID", "test-tenant-id")
 	t.Setenv("AZ_FAIL_MATCH", "account list")
 	t.Setenv("AZ_FAIL_MESSAGE", "not authorized")
 	if _, err := NewClient().ListSubscriptions(context.Background()); err == nil || !strings.Contains(err.Error(), "not authorized") {
@@ -185,7 +187,8 @@ case "$*" in
   *"$AZ_FAIL_MATCH"*) if [ -n "$AZ_FAIL_MATCH" ]; then printf '%s\n' "${AZ_FAIL_MESSAGE:-failed}" >&2; exit 1; fi ;;
 esac
 case "$*" in
-  "account show") printf '%s' "${AZ_ACCOUNT_SHOW:-{}}" ;;
+  "account show"*"tenantId"*"tsv") printf '%s' "${AZ_ACCOUNT_SHOW_TENANT_ID}" ;;
+  "account show"*) printf '%s' "${AZ_ACCOUNT_SHOW:-{}}" ;;
   "login") if [ -n "$AZ_LOGIN_FAIL" ]; then exit 1; fi; printf '%s' "{}" ;;
   "account list"*) printf '%s' "$AZ_ACCOUNT_LIST" ;;
   "group list"*) printf '%s' "$AZ_GROUP_LIST" ;;
