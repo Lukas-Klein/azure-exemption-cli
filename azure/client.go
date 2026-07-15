@@ -38,7 +38,11 @@ func (c *Client) EnsureLogin(ctx context.Context) error {
 }
 
 func (c *Client) ListSubscriptions(ctx context.Context) ([]Subscription, error) {
-	data, err := c.runAzCommand(ctx, "account", "list", "--query", "[].{name:name,id:id}", "-o", "json")
+	tenantID, err := c.getActiveTenantID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active tenant ID: %w", err)
+	}
+	data, err := c.runAzCommand(ctx, "account", "list", "--query", fmt.Sprintf("[?tenantId=='%s'].{name:name,id:id}", tenantID), "-o", "json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list subscriptions: %w", err)
 	}
@@ -276,6 +280,16 @@ func (c *Client) parsePolicyID(id string) (name, subscription, managementGroup s
 		}
 	}
 	return
+}
+
+func (c *Client) getActiveTenantID(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "az", "account", "show", "--query", "tenantId", "-o", "tsv")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to get active tenant ID: %w", err)
+	}
+	return strings.TrimSpace(stdout.String()), nil
 }
 
 func (c *Client) runAzCommand(ctx context.Context, args ...string) ([]byte, error) {
